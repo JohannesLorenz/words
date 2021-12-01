@@ -57,14 +57,17 @@ int main (void)
 
 	std::vector<std::array<short, 2>> cur_word;
 
+	std::vector<std::array<short, 2>> file_content(file.frames() * 4);
+	{
+		const sf_count_t read = file.readf(file_content.data()->data(), file.frames());
+		assert(read == file.frames());
+	}
+
 	frames_t tell = 0;
 	for (frames_t i = 0; i < (frames_t)file.frames(); ++i)
 	{
-		{
-			const frames_t read = file.readf(frame.data(), 1);
-			++tell;
-			assert(read == 1);
-		}
+		frame = file_content[tell];
+		++tell; // TODO: should be at end?
 
 		const bool this_frame_is_word =
 			(frame[0] > idle || frame[0] < -idle || frame[1] > idle || frame[1] < -idle);
@@ -92,11 +95,8 @@ int main (void)
 					SndfileHandle outfile(pathname, SFM_WRITE, file.format(), file.channels(), file.samplerate()) ;
 					assert(outfile.error() == SF_ERR_NO_ERROR);
 
-					for(std::array<short, 2> s : cur_word)
-					{
-						const frames_t written = outfile.writef(s.data(), 1);
-						assert(written == 1);
-					}
+					const frames_t written = outfile.writef(cur_word.data()->data(), cur_word.size());
+					assert(written == cur_word.size());
 
 					++words;
 				}
