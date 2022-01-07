@@ -28,7 +28,7 @@ using frames_t = unsigned long;
 
 typedef void (*functor_t)(std::vector<std::array<short, 2>>& , int, std::vector<std::array<short, 2>>& , int , int , int , int);
 
-void dump_word(std::vector<std::array<short, 2>>&, int word_no, std::vector<std::array<short, 2>>& cur_word, int format, int samplerate, int channels, int)
+void dump_word(std::vector<std::array<short, 2>>& file_content, int word_no, const std::array<frames_t, 2>& start_and_length, int format, int samplerate, int channels)
 {
 /*	printf ("word %ld: %f (%f -> %f) seconds word at %ld (found at %ld)\n",
 							words, (last_word_end-last_word_start)/(float)samplerate,
@@ -44,11 +44,11 @@ void dump_word(std::vector<std::array<short, 2>>&, int word_no, std::vector<std:
 	SndfileHandle outfile(pathname, SFM_WRITE, format, channels, samplerate) ;
 	assert(outfile.error() == SF_ERR_NO_ERROR);
 
-	const frames_t written = outfile.writef(cur_word.data()->data(), cur_word.size());
-	assert(written == cur_word.size());
+	const frames_t written = outfile.writef(file_content[start_and_length[0]].data(), start_and_length[1]);
+	assert(written == start_and_length[1]);
 }
 
-void remove_spike(std::vector<std::array<short, 2>>& file_content, int word_no, std::vector<std::array<short, 2>>& cur_word, int format, int samplerate, int channels, int last_word_start)
+void remove_spike(std::vector<std::array<short, 2>>& file_content, int word_no, const std::array<frames_t, 2>& start_and_length, int format, int samplerate, int channels)
 {
 #if 0
 /*	printf ("word %ld: %f (%f -> %f) seconds word at %ld (found at %ld)\n",
@@ -70,13 +70,13 @@ void remove_spike(std::vector<std::array<short, 2>>& file_content, int word_no, 
 #endif
 	float max_time_spike = 0.05f;
 	frames_t max_spike_size = max_time_spike * samplerate;
-	if(cur_word.size() <= max_spike_size)
+	if(start_and_length[1] <= max_spike_size)
 	{
-		printf("Spike of %f s (%lu samples) at pos %f\n", cur_word.size()/(float)samplerate, cur_word.size(), last_word_start/(float)samplerate);
-		for(int i = -1; i < (int)cur_word.size(); ++i)
+		printf("Spike of %f s (%lu samples) at pos %f\n", start_and_length[1]/(float)samplerate, start_and_length[1], start_and_length[0]/(float)samplerate);
+		for(int i = 0; i < (int)start_and_length[1]; ++i)
 		{
-			file_content[i+last_word_start][0] = 0;
-			file_content[i+last_word_start][1] = 0;
+			file_content[i+start_and_length[0]][0] = 0;
+			file_content[i+start_and_length[0]][1] = 0;
 		}
 	/*	char pathname[256];
 		snprintf(pathname, 256, "/tmp/words/spike-%03d.wav", word_no);
@@ -91,7 +91,7 @@ void remove_spike(std::vector<std::array<short, 2>>& file_content, int word_no, 
 }
 
 frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format, int samplerate, int channels,
-	float min_time_word, float max_time_idle, functor_t functor)
+	float min_time_word, float max_time_idle, std::vector<std::array<frames_t, 2>>& results)
 {
 	std::array<short, 2> frame;
 
@@ -105,13 +105,11 @@ frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format
 
 	frames_t tell = 0;
 
-	frames_t words = 0;
-
 	const frames_t max_frames_idle = max_time_idle * samplerate;
 	const frames_t min_frames_word = min_time_word * samplerate;
 
-
-	std::vector<std::array<short, 2>> cur_word;
+	frames_t cur_word_size = 0;
+	results.clear();
 
 
 
@@ -125,7 +123,6 @@ frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format
 	{
 		assert(tell == i); // TODO: remove tell?
 		frame = file_content[tell];
-		++tell; // TODO: should be at end?
 
 		bool this_frame_is_word = this_frame_is_word_func(frame);
 
@@ -147,15 +144,15 @@ frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format
 				// is word long enough?
 				if (cur_frames_word > min_frames_word)
 				{
-					cur_word.resize(cur_word.size() - idle_count);
-					(*functor)(file_content, (int)words, cur_word, format, samplerate, channels, last_word_start);
-					++words;
+					cur_word_size -= idle_count;
+					//(*functor)(file_content, (int)words, cur_word, format, samplerate, channels, last_word_start);
+					results.push_back(std::array<frames_t, 2>{last_word_start, cur_word_size});
 				}
 				else
 					printf ("only %f seconds word at %f\n",
 						cur_frames_word/(float)samplerate, tell/(float)samplerate);
 
-				cur_word.clear();
+				cur_word_size   = 0;
 				cur_frames_word = 0;
 				last_word_start = tell;
 			}
@@ -168,17 +165,17 @@ frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format
 		else
 			++idle_count;
 
-		cur_word.push_back(frame);
+		++cur_word_size;
+		++tell; // TODO: should be at end?
 	}
 
 	if(cur_frames_word)
 	{
-		cur_word.resize(cur_word.size() - idle_count);
-		(*functor)(file_content, (int)words, cur_word, format, samplerate, channels, last_word_start);
-		++words;
+		cur_word_size -= idle_count;
+		results.push_back(std::array<frames_t, 2>{last_word_start, cur_word_size});
 	}
 
-	return words;
+	return results.size();
 }
 
 int main (void)
@@ -208,26 +205,40 @@ int main (void)
 		assert(read == file.frames());
 	}
 
+	std::vector<std::array<frames_t, 2>> found_words;
 	frames_t spikes = check_words(file_content, file.format(), file.samplerate(), file.channels(),
 			0.0f, // min time word
 			0.1f, // max time idle
-			remove_spike
+			found_words
 	);
 
+	int word_no = 0;
+	for(const std::array<frames_t, 2>& start_and_length : found_words)
 	{
+		remove_spike(file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
+		++word_no;
+	}
+
+	/*{
 		SndfileHandle outfile("/tmp/words/nospikes.wav", SFM_WRITE, file.format(), file.channels(), file.samplerate()) ;
 		assert(outfile.error() == SF_ERR_NO_ERROR);
 
 		const frames_t written = outfile.writef(file_content.data()->data(), file_content.size());
 		assert(written == file_content.size());
-	}
+	}*/
 
 	frames_t words = check_words(file_content, file.format(), file.samplerate(), file.channels(),
 			0.1f, // min time word
 			0.6f, // max time idle
-			dump_word
+			found_words
 	);
 
+	word_no = 0;
+	for(const std::array<frames_t, 2>& start_and_length : found_words)
+	{
+		dump_word(file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
+		++word_no;
+	}
 
 
 	printf ("%ld spikes, %ld words\n", spikes, words);
