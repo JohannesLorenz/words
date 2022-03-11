@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2020 Johannes Lorenz <mail_umleitung@web.de>
+** Copyright (C) 2021 Johannes Lorenz <mail_umleitung@web.de>
 **
 ** This program is free software; you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -119,9 +119,8 @@ frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format
 	};
 
 	//for (frames_t i = 0; i < (frames_t)file.frames(); ++i)
-	for (frames_t i = 0; i < file_content.size(); ++i)
+	for (frames_t tell = 0; tell < file_content.size(); ++tell)
 	{
-		assert(tell == i); // TODO: remove tell?
 		frame = file_content[tell];
 
 		bool this_frame_is_word = this_frame_is_word_func(frame);
@@ -166,7 +165,6 @@ frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format
 			++idle_count;
 
 		++cur_word_size;
-		++tell; // TODO: should be at end?
 	}
 
 	if(cur_frames_word)
