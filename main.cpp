@@ -26,9 +26,23 @@
 
 using frames_t = unsigned long;
 
-typedef void (*functor_t)(std::vector<std::array<short, 2>>& , int, std::vector<std::array<short, 2>>& , int , int , int , int);
+struct cfg
+{
+	//! everything below is considered silence
+	float silence_lvl = 0.01f;
+	//! longer audio is considere no spike, but "useful"
+	float max_time_spike = 0.05f;
+	//! for spike detection: shorter audio is no word
+	float min_time_word_spike = 0.0f;
+	//! for spike detection:  max time a word can be idle - longer idle time splits words
+	float max_time_idle_spike = 0.1f;
+	//! shorter audio is no word
+	float min_time_word = 0.1f;
+	//! max time a word can be idle - longer idle time splits words
+	float max_time_idle = 0.6f;
+};
 
-void dump_word(std::vector<std::array<short, 2>>& file_content, int word_no, const std::array<frames_t, 2>& start_and_length, int format, int samplerate, int channels)
+void dump_word(const cfg& , std::vector<std::array<short, 2>>& file_content, int word_no, const std::array<frames_t, 2>& start_and_length, int format, int samplerate, int channels)
 {
 /*	printf ("word %ld: %f (%f -> %f) seconds word at %ld (found at %ld)\n",
 							words, (last_word_end-last_word_start)/(float)samplerate,
@@ -48,7 +62,7 @@ void dump_word(std::vector<std::array<short, 2>>& file_content, int word_no, con
 	assert(written == start_and_length[1]);
 }
 
-void remove_spike(std::vector<std::array<short, 2>>& file_content, int word_no, const std::array<frames_t, 2>& start_and_length, int format, int samplerate, int channels)
+void remove_spike(const cfg& config, std::vector<std::array<short, 2>>& file_content, int word_no, const std::array<frames_t, 2>& start_and_length, int format, int samplerate, int channels)
 {
 #if 0
 /*	printf ("word %ld: %f (%f -> %f) seconds word at %ld (found at %ld)\n",
@@ -68,8 +82,7 @@ void remove_spike(std::vector<std::array<short, 2>>& file_content, int word_no, 
 	const frames_t written = outfile.writef(cur_word.data()->data(), cur_word.size());
 	assert(written == cur_word.size());
 #endif
-	float max_time_spike = 0.05f;
-	frames_t max_spike_size = max_time_spike * samplerate;
+	frames_t max_spike_size = config.max_time_spike * samplerate;
 	if(start_and_length[1] <= max_spike_size)
 	{
 		printf("Spike of %f s (%lu samples) at pos %f\n", start_and_length[1]/(float)samplerate, start_and_length[1], start_and_length[0]/(float)samplerate);
@@ -90,13 +103,12 @@ void remove_spike(std::vector<std::array<short, 2>>& file_content, int word_no, 
 	}
 }
 
-frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format, int samplerate, int channels,
+frames_t check_words(const cfg& config, std::vector<std::array<short, 2>>& file_content, int format, int samplerate, int channels,
 	float min_time_word, float max_time_idle, std::vector<std::array<frames_t, 2>>& results)
 {
 	std::array<short, 2> frame;
 
-	const float idle = 0.01f * 32768; // everything below is silence
-
+	const float idle = config.silence_lvl * 32768; // everything below is silence
 
 	frames_t cur_frames_word = 0;
 	frames_t idle_count = 0;
@@ -175,6 +187,8 @@ frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format
 
 int main (void)
 {
+	const cfg config;
+
 	const char * fname = "/tmp/in.wav" ;
 	SndfileHandle file(fname) ;
 
@@ -193,16 +207,16 @@ int main (void)
 	}
 
 	std::vector<std::array<frames_t, 2>> found_words;
-	frames_t spikes = check_words(file_content, file.format(), file.samplerate(), file.channels(),
-			0.0f, // min time word
-			0.1f, // max time idle
+	frames_t spikes = check_words(config, file_content, file.format(), file.samplerate(), file.channels(),
+			config.min_time_word_spike,
+			config.max_time_idle_spike,
 			found_words
 	);
 
 	int word_no = 0;
 	for(const std::array<frames_t, 2>& start_and_length : found_words)
 	{
-		remove_spike(file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
+		remove_spike(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
 		++word_no;
 	}
 
@@ -214,16 +228,16 @@ int main (void)
 		assert(written == file_content.size());
 	}*/
 
-	frames_t words = check_words(file_content, file.format(), file.samplerate(), file.channels(),
-			0.1f, // min time word
-			0.6f, // max time idle
+	frames_t words = check_words(config, file_content, file.format(), file.samplerate(), file.channels(),
+			config.min_time_word,
+			config.max_time_idle,
 			found_words
 	);
 
 	word_no = 0;
 	for(const std::array<frames_t, 2>& start_and_length : found_words)
 	{
-		dump_word(file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
+		dump_word(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
 		++word_no;
 	}
 
