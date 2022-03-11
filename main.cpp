@@ -1,5 +1,5 @@
 /*
-** Copyright (C) 2021 Johannes Lorenz <mail_umleitung@web.de>
+** Copyright (C) 2022 Johannes Lorenz <mail_umleitung@web.de>
 **
 ** This program is free software; you can redistribute it and/or modify
 ** it under the terms of the GNU General Public License as published by
@@ -101,9 +101,6 @@ frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format
 	frames_t cur_frames_word = 0;
 	frames_t idle_count = 0;
 	frames_t last_word_start=0;
-	frames_t last_word_end=0;
-
-	frames_t tell = 0;
 
 	const frames_t max_frames_idle = max_time_idle * samplerate;
 	const frames_t min_frames_word = min_time_word * samplerate;
@@ -118,7 +115,6 @@ frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format
 		return (frame[0] > idle || frame[0] < -idle || frame[1] > idle || frame[1] < -idle);
 	};
 
-	//for (frames_t i = 0; i < (frames_t)file.frames(); ++i)
 	for (frames_t tell = 0; tell < file_content.size(); ++tell)
 	{
 		frame = file_content[tell];
@@ -155,8 +151,9 @@ frames_t check_words(std::vector<std::array<short, 2>>& file_content, int format
 				cur_frames_word = 0;
 				last_word_start = tell;
 			}
-			else
-				last_word_end = tell;
+			else {
+				// end of the word
+			}
 
 			++cur_frames_word;
 			idle_count = 0;
@@ -181,10 +178,6 @@ int main (void)
 	const char * fname = "/tmp/in.wav" ;
 	SndfileHandle file(fname) ;
 
-
-
-	//float min_loudness = 0.2f * 3276;
-
 	printf ("Opened file '%s'\n", fname) ;
 	printf ("    Sample rate : %d\n", file.samplerate ()) ;
 	printf ("    Channels    : %d\n", file.channels ()) ;
@@ -192,10 +185,6 @@ int main (void)
 	printf ("    Format:     : %x\n", file.format());
 
 	assert(file.format() & (SF_FORMAT_WAV | SF_FORMAT_PCM_16));
-
-
-
-	frames_t idle_count_prev=10000000; // frames idle after last word
 
 	std::vector<std::array<short, 2>> file_content(file.frames() * 4);
 	{
