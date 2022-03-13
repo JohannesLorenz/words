@@ -131,11 +131,15 @@ void remove_spike(const cfg& config, std::vector<std::array<short, 2>>& file_con
 
 	const frames_t written = outfile.writef(cur_word.data()->data(), cur_word.size());
 	assert(written == cur_word.size());
+#else
+	(void) word_no;
+	(void) channels;
+	(void) format;
 #endif
-	frames_t max_spike_size = config.max_time_spike * samplerate;
+	frames_t max_spike_size = static_cast<frames_t>(config.max_time_spike * (float)samplerate);
 	if(start_and_length[1] <= max_spike_size)
 	{
-		printf("Spike of %f s (%lu samples) at pos %f\n", start_and_length[1]/(float)samplerate, start_and_length[1], start_and_length[0]/(float)samplerate);
+		printf("Spike of %f s (%lu samples) at pos %f\n", (float)start_and_length[1]/(float)samplerate, start_and_length[1], (float)start_and_length[0]/(float)samplerate);
 		for(int i = 0; i < (int)start_and_length[1]; ++i)
 		{
 			file_content[i+start_and_length[0]][0] = 0;
@@ -153,7 +157,7 @@ void remove_spike(const cfg& config, std::vector<std::array<short, 2>>& file_con
 	}
 }
 
-frames_t check_words(const cfg& config, std::vector<std::array<short, 2>>& file_content, int format, int samplerate, int channels,
+frames_t check_words(const cfg& config, std::vector<std::array<short, 2>>& file_content, int samplerate,
 	float min_time_word, float max_time_idle, std::vector<std::array<frames_t, 2>>& results)
 {
 	std::array<short, 2> frame;
@@ -164,8 +168,10 @@ frames_t check_words(const cfg& config, std::vector<std::array<short, 2>>& file_
 	frames_t idle_count = 0;
 	frames_t last_word_start=0;
 
-	const frames_t max_frames_idle = max_time_idle * samplerate;
-	const frames_t min_frames_word = min_time_word * samplerate;
+	const frames_t max_frames_idle =
+		static_cast<frames_t>(max_time_idle * (float)samplerate);
+	const frames_t min_frames_word =
+		static_cast<frames_t>(min_time_word * (float)samplerate);
 
 	frames_t cur_word_size = 0;
 	results.clear();
@@ -207,7 +213,7 @@ frames_t check_words(const cfg& config, std::vector<std::array<short, 2>>& file_
 				}
 				else
 					printf ("only %f seconds word at %f\n",
-						cur_frames_word/(float)samplerate, tell/(float)samplerate);
+						(float)cur_frames_word/(float)samplerate, (float)tell/(float)samplerate);
 
 				cur_word_size   = 0;
 				cur_frames_word = 0;
@@ -268,7 +274,7 @@ int main (int argc, char** argv)
 		}
 
 		std::vector<std::array<frames_t, 2>> found_words;
-		frames_t spikes = check_words(config, file_content, file.format(), file.samplerate(), file.channels(),
+		frames_t spikes = check_words(config, file_content, file.samplerate(),
 				config.min_time_word_spike,
 				config.max_time_idle_spike,
 				found_words
@@ -289,7 +295,7 @@ int main (int argc, char** argv)
 			assert(written == file_content.size());
 		}*/
 
-		frames_t words = check_words(config, file_content, file.format(), file.samplerate(), file.channels(),
+		frames_t words = check_words(config, file_content, file.samplerate(),
 				config.min_time_word,
 				config.max_time_idle,
 				found_words
