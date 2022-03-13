@@ -17,17 +17,22 @@
 */
 
 #include <array>
-#include <cassert>
 #include <cstdio>
 #include <cstring>
+#include <fstream>
+#include <iostream>
+#include <regex>
+#include <string>
+#include <sstream>
 #include <vector>
 
 #include <sndfile.hh>
 
 using frames_t = unsigned long;
 
-struct cfg
+class cfg
 {
+public:
 	//! everything below is considered silence
 	float silence_lvl = 0.01f;
 	//! longer audio is considere no spike, but "useful"
@@ -40,6 +45,49 @@ struct cfg
 	float min_time_word = 0.1f;
 	//! max time a word can be idle - longer idle time splits words
 	float max_time_idle = 0.6f;
+
+	void read_from(const std::string& fname)
+	{
+		std::string line;
+		{
+			std::ifstream cfg_file(fname);
+			if(!cfg_file.good())
+			{
+				throw std::runtime_error("Cannot open file: " + fname);
+			}
+			while(std::getline(cfg_file, line))
+			{
+				std::regex re(R"XXX(^(\s*(\S+)\s*=\s*([0-9]+\.[0-9]+))?\s*(#.*)?$)XXX",
+					std::regex::optimize);
+				std::smatch match;
+				if(std::regex_search(line, match, re))
+				{
+					if(match.length(2))
+					{
+						std::string key = match.str(2);
+						float value = std::stof(match.str(3));
+						std::map<std::string, float&>::iterator itr = float_map.find(key);
+						if(itr == float_map.end())
+							throw std::runtime_error("Key invalid: " + key);
+						else
+							itr->second = value;
+					}
+				}
+				else
+					throw std::runtime_error("Invalid line (should be \"key = X.Y\"): " + line);
+			}
+		}
+	}
+private:
+	std::map<std::string, float&> float_map
+	= {
+		{ "silence_lvl", silence_lvl},
+		{ "max_time_spike", max_time_spike},
+		{ "min_time_word_spike", min_time_word_spike},
+		{ "max_time_idle_spike", max_time_idle_spike},
+		{ "min_time_word", min_time_word},
+		{ "max_time_idle", max_time_idle},
+	};
 };
 
 void dump_word(const cfg& , std::vector<std::array<short, 2>>& file_content, int word_no, const std::array<frames_t, 2>& start_and_length, int format, int samplerate, int channels)
@@ -56,10 +104,12 @@ void dump_word(const cfg& , std::vector<std::array<short, 2>>& file_content, int
 	snprintf(pathname, 256, "/tmp/words/%03d.wav", word_no);
 
 	SndfileHandle outfile(pathname, SFM_WRITE, format, channels, samplerate) ;
-	assert(outfile.error() == SF_ERR_NO_ERROR);
+	if(outfile.error() != SF_ERR_NO_ERROR)
+		throw std::runtime_error("Error opening outfile");
 
 	const frames_t written = outfile.writef(file_content[start_and_length[0]].data(), start_and_length[1]);
-	assert(written == start_and_length[1]);
+	if(written != start_and_length[1])
+		throw std::runtime_error("Not enough bytes written");
 }
 
 void remove_spike(const cfg& config, std::vector<std::array<short, 2>>& file_content, int word_no, const std::array<frames_t, 2>& start_and_length, int format, int samplerate, int channels)
@@ -185,66 +235,82 @@ frames_t check_words(const cfg& config, std::vector<std::array<short, 2>>& file_
 	return results.size();
 }
 
-int main (void)
+int main (int argc, char** argv)
 {
-	const cfg config;
-
-	const char * fname = "/tmp/in.wav" ;
-	SndfileHandle file(fname) ;
-
-	printf ("Opened file '%s'\n", fname) ;
-	printf ("    Sample rate : %d\n", file.samplerate ()) ;
-	printf ("    Channels    : %d\n", file.channels ()) ;
-	printf ("    Frames      : %ld\n",file.frames()) ;
-	printf ("    Format:     : %x\n", file.format());
-
-	assert(file.format() & (SF_FORMAT_WAV | SF_FORMAT_PCM_16));
-
-	std::vector<std::array<short, 2>> file_content(file.frames() * 4);
+	int rval = EXIT_SUCCESS;
+	try
 	{
-		const sf_count_t read = file.readf(file_content.data()->data(), file.frames());
-		assert(read == file.frames());
+		cfg config;
+
+		if(argc != 2)
+			throw std::runtime_error("Expecting exactly 1 arg");
+		const char * fname = argv[1];
+
+		std::string cfg_fname = std::string(fname) + ".cfg";
+		config.read_from(cfg_fname.c_str());
+
+		SndfileHandle file(fname) ;
+
+		printf ("Opened file '%s'\n", fname) ;
+		printf ("    Sample rate : %d\n", file.samplerate ()) ;
+		printf ("    Channels    : %d\n", file.channels ()) ;
+		printf ("    Frames      : %ld\n",file.frames()) ;
+		printf ("    Format:     : %x\n", file.format());
+
+		if(!(file.format() & (SF_FORMAT_WAV | SF_FORMAT_PCM_16)))
+			throw std::runtime_error("Invalid WAV format");
+
+		std::vector<std::array<short, 2>> file_content(file.frames() * 4);
+		{
+			const sf_count_t read = file.readf(file_content.data()->data(), file.frames());
+			if(read != file.frames())
+				throw std::runtime_error("Not enough frames read");
+		}
+
+		std::vector<std::array<frames_t, 2>> found_words;
+		frames_t spikes = check_words(config, file_content, file.format(), file.samplerate(), file.channels(),
+				config.min_time_word_spike,
+				config.max_time_idle_spike,
+				found_words
+		);
+
+		int word_no = 0;
+		for(const std::array<frames_t, 2>& start_and_length : found_words)
+		{
+			remove_spike(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
+			++word_no;
+		}
+
+		/*{
+			SndfileHandle outfile("/tmp/words/nospikes.wav", SFM_WRITE, file.format(), file.channels(), file.samplerate()) ;
+			assert(outfile.error() == SF_ERR_NO_ERROR);
+
+			const frames_t written = outfile.writef(file_content.data()->data(), file_content.size());
+			assert(written == file_content.size());
+		}*/
+
+		frames_t words = check_words(config, file_content, file.format(), file.samplerate(), file.channels(),
+				config.min_time_word,
+				config.max_time_idle,
+				found_words
+		);
+
+		word_no = 0;
+		for(const std::array<frames_t, 2>& start_and_length : found_words)
+		{
+			dump_word(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
+			++word_no;
+		}
+
+
+		printf ("%ld spikes, %ld words\n", spikes, words);
+
+		puts ("Done.\n") ;
+	} catch (std::exception& e) {
+		std::cerr << e.what() << std::endl;
+		rval = EXIT_FAILURE;
 	}
 
-	std::vector<std::array<frames_t, 2>> found_words;
-	frames_t spikes = check_words(config, file_content, file.format(), file.samplerate(), file.channels(),
-			config.min_time_word_spike,
-			config.max_time_idle_spike,
-			found_words
-	);
-
-	int word_no = 0;
-	for(const std::array<frames_t, 2>& start_and_length : found_words)
-	{
-		remove_spike(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
-		++word_no;
-	}
-
-	/*{
-		SndfileHandle outfile("/tmp/words/nospikes.wav", SFM_WRITE, file.format(), file.channels(), file.samplerate()) ;
-		assert(outfile.error() == SF_ERR_NO_ERROR);
-
-		const frames_t written = outfile.writef(file_content.data()->data(), file_content.size());
-		assert(written == file_content.size());
-	}*/
-
-	frames_t words = check_words(config, file_content, file.format(), file.samplerate(), file.channels(),
-			config.min_time_word,
-			config.max_time_idle,
-			found_words
-	);
-
-	word_no = 0;
-	for(const std::array<frames_t, 2>& start_and_length : found_words)
-	{
-		dump_word(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
-		++word_no;
-	}
-
-
-	printf ("%ld spikes, %ld words\n", spikes, words);
-
-	puts ("Done.\n") ;
-	return 0 ;
+	return rval;
 }
 
