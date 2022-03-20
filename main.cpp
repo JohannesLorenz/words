@@ -46,6 +46,9 @@ public:
 	//! max time a word can be idle - longer idle time splits words
 	float max_time_idle = 0.6f;
 
+	float fade_in_time = 0.05f;
+	float fade_out_time = 0.05f;
+
 	void read_from(const std::string& fname)
 	{
 		std::string line;
@@ -81,12 +84,14 @@ public:
 private:
 	std::map<std::string, float&> float_map
 	= {
-		{ "silence_lvl", silence_lvl},
-		{ "max_time_spike", max_time_spike},
-		{ "min_time_word_spike", min_time_word_spike},
-		{ "max_time_idle_spike", max_time_idle_spike},
-		{ "min_time_word", min_time_word},
-		{ "max_time_idle", max_time_idle},
+		{"silence_lvl", silence_lvl},
+		{"max_time_spike", max_time_spike},
+		{"min_time_word_spike", min_time_word_spike},
+		{"max_time_idle_spike", max_time_idle_spike},
+		{"min_time_word", min_time_word},
+		{"max_time_idle", max_time_idle},
+		{"fade_in_time", fade_in_time},
+		{"fade_out_time", fade_out_time}
 	};
 };
 
@@ -157,6 +162,7 @@ void remove_spike(const cfg& config, std::vector<std::array<short, 2>>& file_con
 	}
 }
 
+//! @param results resulting pairs of (start, length) for each word
 frames_t check_words(const cfg& config, std::vector<std::array<short, 2>>& file_content, int samplerate,
 	float min_time_word, float max_time_idle, std::vector<std::array<frames_t, 2>>& results)
 {
@@ -300,6 +306,12 @@ int main (int argc, char** argv)
 				config.max_time_idle,
 				found_words
 		);
+
+		const frames_t fade_in_frames =
+		static_cast<frames_t>(config.fade_in_time * (float)file.samplerate());
+		const frames_t fade_out_frames =
+		static_cast<frames_t>(config.fade_out_time * (float)file.samplerate());
+
 
 		word_no = 0;
 		for(const std::array<frames_t, 2>& start_and_length : found_words)
