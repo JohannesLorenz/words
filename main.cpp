@@ -312,13 +312,34 @@ int main (int argc, char** argv)
 		const frames_t fade_out_frames =
 		static_cast<frames_t>(config.fade_out_time * (float)file.samplerate());
 
-
+#ifdef DUMP_SINGLE
 		word_no = 0;
 		for(const std::array<frames_t, 2>& start_and_length : found_words)
 		{
 			dump_word(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
 			++word_no;
 		}
+#else
+		char pathname[256], pathname_frames[256];
+		snprintf(pathname,        256, "/tmp/compressed.wav");
+		snprintf(pathname_frames, 256, "/tmp/compressed.wav.frames");
+
+		SndfileHandle outfile(pathname, SFM_WRITE, file.format(), file.channels(), file.samplerate()) ;
+		if(outfile.error() != SF_ERR_NO_ERROR)
+			throw std::runtime_error("Error opening outfile");
+
+		std::ofstream out(pathname_frames);
+
+		frames_t framepos = 0;
+		for(const std::array<frames_t, 2>& start_and_length : found_words)
+		{
+			const frames_t written = outfile.writef(file_content[start_and_length[0]].data(), start_and_length[1]);
+			if(written != start_and_length[1])
+				throw std::runtime_error("Not enough bytes written");
+			out << framepos << std::endl;
+			framepos += written;
+		}
+#endif
 
 
 		printf ("%ld spikes, %ld words\n", spikes, words);
