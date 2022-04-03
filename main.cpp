@@ -28,72 +28,9 @@
 
 #include <sndfile.hh>
 
+#include "cfg.h"
+
 using frames_t = unsigned long;
-
-class cfg
-{
-public:
-	//! everything below is considered silence
-	float silence_lvl = 0.01f;
-	//! longer audio is considere no spike, but "useful"
-	float max_time_spike = 0.05f;
-	//! for spike detection: shorter audio is no word
-	float min_time_word_spike = 0.0f;
-	//! for spike detection:  max time a word can be idle - longer idle time splits words
-	float max_time_idle_spike = 0.1f;
-	//! shorter audio is no word
-	float min_time_word = 0.1f;
-	//! max time a word can be idle - longer idle time splits words
-	float max_time_idle = 0.6f;
-
-	float fade_in_time = 0.05f;
-	float fade_out_time = 0.05f;
-
-	void read_from(const std::string& fname)
-	{
-		std::string line;
-		{
-			std::ifstream cfg_file(fname);
-			if(!cfg_file.good())
-			{
-				throw std::runtime_error("Cannot open file: " + fname);
-			}
-			while(std::getline(cfg_file, line))
-			{
-				std::regex re(R"XXX(^(\s*(\S+)\s*=\s*([0-9]+\.[0-9]+))?\s*(#.*)?$)XXX",
-					std::regex::optimize);
-				std::smatch match;
-				if(std::regex_search(line, match, re))
-				{
-					if(match.length(2))
-					{
-						std::string key = match.str(2);
-						float value = std::stof(match.str(3));
-						std::map<std::string, float&>::iterator itr = float_map.find(key);
-						if(itr == float_map.end())
-							throw std::runtime_error("Key invalid: " + key);
-						else
-							itr->second = value;
-					}
-				}
-				else
-					throw std::runtime_error("Invalid line (should be \"key = X.Y\"): " + line);
-			}
-		}
-	}
-private:
-	std::map<std::string, float&> float_map
-	= {
-		{"silence_lvl", silence_lvl},
-		{"max_time_spike", max_time_spike},
-		{"min_time_word_spike", min_time_word_spike},
-		{"max_time_idle_spike", max_time_idle_spike},
-		{"min_time_word", min_time_word},
-		{"max_time_idle", max_time_idle},
-		{"fade_in_time", fade_in_time},
-		{"fade_out_time", fade_out_time}
-	};
-};
 
 void dump_word(const cfg& , std::vector<std::array<short, 2>>& file_content, int word_no, const std::array<frames_t, 2>& start_and_length, int format, int samplerate, int channels)
 {
