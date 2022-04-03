@@ -30,12 +30,12 @@ void cfg::read_from(const std::string &fname)
 		{
 			throw std::runtime_error("Cannot open file: " + fname);
 		}
+		std::regex re(R"XXX(^(\s*(\S+)\s*=\s*([0-9]+\.[0-9]+))?\s*(#.*)?$)XXX",
+				std::regex::optimize);
 		while(std::getline(cfg_file, line))
 		{
-			std::regex re(R"XXX(^(\s*(\S+)\s*=\s*([0-9]+\.[0-9]+))?\s*(#.*)?$)XXX",
-					std::regex::optimize);
 			std::smatch match;
-			if(std::regex_search(line, match, re))
+			if(std::regex_match(line, match, re))
 			{
 				if(match.length(2))
 				{

@@ -29,6 +29,7 @@
 #include <sndfile.hh>
 
 #include "cfg.h"
+#include "plan.h"
 
 using frames_t = unsigned long;
 
@@ -189,6 +190,11 @@ int main (int argc, char** argv)
 	int rval = EXIT_SUCCESS;
 	try
 	{
+		plan_t plan;
+		plan.read_from("/home/johannes/plan.txt");
+
+		exit(0);
+
 		cfg config;
 
 		if(argc != 2)
