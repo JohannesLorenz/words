@@ -25,6 +25,7 @@
 
 class plan_t
 {
+public:
     float def_break = 0.75f;
     float def_nbreak = 1.5f;
     int def_follow = 0;
@@ -32,7 +33,7 @@ class plan_t
     std::vector <std::string> files;
     std::map <std::string, std::size_t> file_dict;
     std::vector <std::pair<std::size_t, std::string>> words; // prefix + word
-public:
+
     plan_t();
     void read_from(const std::string& fname);
 

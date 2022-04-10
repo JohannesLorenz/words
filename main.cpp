@@ -190,103 +190,102 @@ int main (int argc, char** argv)
 	int rval = EXIT_SUCCESS;
 	try
 	{
-		plan_t plan;
-		plan.read_from("/home/johannes/plan.txt");
-
-		exit(0);
-
-		cfg config;
-
 		if(argc != 2)
 			throw std::runtime_error("Expecting exactly 1 arg");
-		const char * fname = argv[1];
+		plan_t plan;
+		plan.read_from(argv[1]);
 
-		std::string cfg_fname = std::string(fname) + ".cfg";
-		config.read_from(cfg_fname.c_str());
-
-		SndfileHandle file(fname) ;
-
-		printf ("Opened file '%s'\n", fname) ;
-		printf ("    Sample rate : %d\n", file.samplerate ()) ;
-		printf ("    Channels    : %d\n", file.channels ()) ;
-		printf ("    Frames      : %ld\n",file.frames()) ;
-		printf ("    Format:     : %x\n", file.format());
-
-		if(!(file.format() & (SF_FORMAT_WAV | SF_FORMAT_PCM_16)))
-			throw std::runtime_error("Invalid WAV format");
-
-		std::vector<std::array<short, 2>> file_content(file.frames() * 4);
+		for(const std::string& fname_in_plan : plan.files)
 		{
-			const sf_count_t read = file.readf(file_content.data()->data(), file.frames());
-			if(read != file.frames())
-				throw std::runtime_error("Not enough frames read");
-		}
+			cfg config;
+			std::string cfg_fname = fname_in_plan + ".cfg";
+			config.read_from(cfg_fname.c_str());
 
-		std::vector<std::array<frames_t, 2>> found_words;
-		frames_t spikes = check_words(config, file_content, file.samplerate(),
-				config.min_time_word_spike,
-				config.max_time_idle_spike,
-				found_words
-		);
+			SndfileHandle file(fname_in_plan) ;
 
-		int word_no = 0;
-		for(const std::array<frames_t, 2>& start_and_length : found_words)
-		{
-			remove_spike(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
-			++word_no;
-		}
+			printf ("Opened file '%s'\n", fname_in_plan.c_str()) ;
+			printf ("    Sample rate : %d\n", file.samplerate ()) ;
+			printf ("    Channels    : %d\n", file.channels ()) ;
+			printf ("    Frames      : %ld\n",file.frames()) ;
+			printf ("    Format:     : %x\n", file.format());
 
-		/*{
-			SndfileHandle outfile("/tmp/words/nospikes.wav", SFM_WRITE, file.format(), file.channels(), file.samplerate()) ;
-			assert(outfile.error() == SF_ERR_NO_ERROR);
+			if(!(file.format() & (SF_FORMAT_WAV | SF_FORMAT_PCM_16)))
+				throw std::runtime_error("Invalid WAV format");
 
-			const frames_t written = outfile.writef(file_content.data()->data(), file_content.size());
-			assert(written == file_content.size());
-		}*/
+			std::vector<std::array<short, 2>> file_content(file.frames() * 4);
+			{
+				const sf_count_t read = file.readf(file_content.data()->data(), file.frames());
+				if(read != file.frames())
+					throw std::runtime_error("Not enough frames read");
+			}
 
-		frames_t words = check_words(config, file_content, file.samplerate(),
-				config.min_time_word,
-				config.max_time_idle,
-				found_words
-		);
+			std::vector<std::array<frames_t, 2>> found_words;
+			frames_t spikes = check_words(config, file_content, file.samplerate(),
+					config.min_time_word_spike,
+					config.max_time_idle_spike,
+					found_words
+			);
 
-		const frames_t fade_in_frames =
-		static_cast<frames_t>(config.fade_in_time * (float)file.samplerate());
-		const frames_t fade_out_frames =
-		static_cast<frames_t>(config.fade_out_time * (float)file.samplerate());
+			int word_no = 0;
+			for(const std::array<frames_t, 2>& start_and_length : found_words)
+			{
+				remove_spike(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
+				++word_no;
+			}
+
+			/*{
+				SndfileHandle outfile("/tmp/words/nospikes.wav", SFM_WRITE, file.format(), file.channels(), file.samplerate()) ;
+				assert(outfile.error() == SF_ERR_NO_ERROR);
+
+				const frames_t written = outfile.writef(file_content.data()->data(), file_content.size());
+				assert(written == file_content.size());
+			}*/
+
+			frames_t words = check_words(config, file_content, file.samplerate(),
+					config.min_time_word,
+					config.max_time_idle,
+					found_words
+			);
+
+			const frames_t fade_in_frames =
+			static_cast<frames_t>(config.fade_in_time * (float)file.samplerate());
+			const frames_t fade_out_frames =
+			static_cast<frames_t>(config.fade_out_time * (float)file.samplerate());
 
 #ifdef DUMP_SINGLE
-		word_no = 0;
-		for(const std::array<frames_t, 2>& start_and_length : found_words)
-		{
-			dump_word(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
-			++word_no;
-		}
+			word_no = 0;
+			for(const std::array<frames_t, 2>& start_and_length : found_words)
+			{
+				dump_word(config, file_content, word_no, start_and_length, file.format(), file.samplerate(), file.channels());
+				++word_no;
+			}
 #else
-		char pathname[256], pathname_frames[256];
-		snprintf(pathname,        256, "/tmp/compressed.wav");
-		snprintf(pathname_frames, 256, "/tmp/compressed.wav.frames");
+			char pathname[256], pathname_frames[256];
+			snprintf(pathname,        256, "/tmp/compressed.wav");
+			snprintf(pathname_frames, 256, "/tmp/compressed.wav.frames");
 
-		SndfileHandle outfile(pathname, SFM_WRITE, file.format(), file.channels(), file.samplerate()) ;
-		if(outfile.error() != SF_ERR_NO_ERROR)
-			throw std::runtime_error("Error opening outfile");
+			SndfileHandle outfile(pathname, SFM_WRITE, file.format(), file.channels(), file.samplerate()) ;
+			if(outfile.error() != SF_ERR_NO_ERROR)
+				throw std::runtime_error("Error opening outfile");
 
-		std::ofstream out(pathname_frames);
+			std::ofstream out(pathname_frames);
 
-		frames_t framepos = 0;
-		for(const std::array<frames_t, 2>& start_and_length : found_words)
-		{
-			const frames_t written = outfile.writef(file_content[start_and_length[0]].data(), start_and_length[1]);
-			if(written != start_and_length[1])
-				throw std::runtime_error("Not enough bytes written");
-			out << framepos << std::endl;
-			framepos += written;
-		}
+			frames_t framepos = 0;
+			for(const std::array<frames_t, 2>& start_and_length : found_words)
+			{
+				const frames_t written = outfile.writef(file_content[start_and_length[0]].data(), start_and_length[1]);
+				if(written != start_and_length[1])
+					throw std::runtime_error("Not enough bytes written");
+				out << framepos << std::endl;
+				framepos += written;
+			}
+
+
 #endif
 
 
-		printf ("%ld spikes, %ld words\n", spikes, words);
-
+			printf ("%s: %ld spikes, %ld words\n", fname_in_plan.c_str(), spikes, words);
+		} // for each plan file
 		puts ("Done.\n") ;
 	} catch (std::exception& e) {
 		std::cerr << e.what() << std::endl;
